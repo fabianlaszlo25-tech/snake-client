@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>GEO SNAKE</title>
+    <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
+    <style>
+        body { margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
+        #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+        #ui-panel {
+            position: absolute; top: 20px; left: 20px;
+            background: rgba(15, 15, 20, 0.85); border: 1px solid #00ffcc;
+            border-radius: 8px; padding: 20px; color: white; width: 250px;
+            pointer-events: none; z-index: 10;
+        }
+        .highlight { color: #00ffcc; font-weight: bold; }
+        #tracker {
+            margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.2);
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        #apple-arrow {
+            display: inline-block; font-size: 24px; color: #ff0044;
+            transition: transform 0.1s linear; transform-origin: center;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div id="ui-panel">
+        <h1 style="color:#00ffcc; margin:0 0 10px 0;">GEO SNAKE</h1>
+        <p id="instructions" style="color:#aaa; font-size:14px;">Click map to deploy.</p>
+        <div style="font-size:14px; line-height:1.8;">
+            <div>Network: <span id="network-status" class="highlight">Connecting...</span></div>
+            <div>Score: <span id="score" class="highlight">0</span></div>
+        </div>
+        <div id="tracker">
+            <span>Next Apple:</span>
+            <span id="apple-arrow">⬆</span>
+        </div>
+    </div>
+
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+    <script src="https://unpkg.com/colyseus.js@latest/dist/colyseus.js"></script>
+
+    <script>
+        // ADD YOUR TOKEN HERE
+        mapboxgl.accessToken = 'pk.eyJ1IjoiZmFiaWFubGFzemxvIiwiYSI6ImNtdWVucHZpZzA1OWMyd3J6cTcxdXp1NWYifQ.kMJLBGApSaulkBMZcp2azw'; 
+
+        const map = new mapboxgl.Map({
+            container: 'map', style: 'mapbox://styles/mapbox/dark-v11',
+            center: [19.0402, 47.4979], zoom: 4, interactive: false 
+        });
+
+        let hasSpawned = false;
+        
+        // UI Pointer Update Function
+        function updatePointer(headLng, headLat, appleLng, appleLat) {
+            const dx = appleLng - headLng;
+            const dy = appleLat - headLat;
+            // Calculate bearing (0 is up/North)
+            const angle = Math.atan2(dx, dy) * (180 / Math.PI);
+            document.getElementById('apple-arrow').style.transform = `rotate(${angle}deg)`;
+        }
+
+        map.on('load', () => {
+            const client = new window.Colyseus.Client('https://snake-server-71tu.onrender.com/');
+
+            client.joinOrCreate("snake_room").then(room => {
+                document.getElementById('network-status').innerText = "Multiplayer Active";
+                
+                map.addSource('apple-src', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'Point', coordinates: [0,0] } } });
+                // Increased Apple Size
+                map.addLayer({ id: 'apple-layer', type: 'circle', source: 'apple-src', paint: { 'circle-color': '#ff0044', 'circle-radius': 14, 'circle-blur': 0.2 } });
+
+                room.state.apple.onChange(() => {
+                    const src = map.getSource('apple-src');
+                    if (src) src.setData({ type: 'Feature', geometry: { type: 'Point', coordinates: [room.state.apple.lng, room.state.apple.lat] } });
+                });
+
+                map.on('click', (e) => {
+                    if (hasSpawned) return;
+                    room.send("spawn", { lat: e.lngLat.lat, lng: e.lngLat.lng });
+                    hasSpawned = true;
+                    document.getElementById('instructions').innerText = "WASD to move.";
+                    map.jumpTo({ center: [e.lngLat.lng, e.lngLat.lat], zoom: 18, pitch: 45 });
+                });
+
+                room.state.players.onAdd((player, sessionId) => {
+                    player.body.onAdd(() => {
+                        if (!map.getSource(sessionId)) {
+                            map.addSource(sessionId, { type: 'geojson', data: { type: 'Feature', geometry: { type: 'LineString', coordinates: [] } } });
+                            // Increased Snake Thickness
+                            map.addLayer({ id: sessionId, type: 'line', source: sessionId, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#00ffcc', 'line-width': 16, 'line-blur': 1 } });
+                        }
+                        const coords = [];
+                        player.body.forEach(p => coords.push([p.lng, p.lat]));
+                        if (coords.length >= 2) map.getSource(sessionId).setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: coords } });
+                        
+                        if (sessionId === room.sessionId && player.body.length > 0) {
+                             const headLng = player.body[0].lng;
+                             const headLat = player.body[0].lat;
+                             map.setCenter([headLng, headLat]);
+                             document.getElementById('score').innerText = player.body.length - 5;
+                             updatePointer(headLng, headLat, room.state.apple.lng, room.state.apple.lat);
+                        }
+                    });
+                });
+
+                document.addEventListener('keydown', (e) => {
+                    if (!hasSpawned) return;
+                    const key = e.key.toLowerCase();
+                    if (key === 'w' || key === 'arrowup') room.send("direction", "up");
+                    if (key === 's' || key === 'arrowdown') room.send("direction", "down");
+                    if (key === 'a' || key === 'arrowleft') room.send("direction", "left");
+                    if (key === 'd' || key === 'arrowright') room.send("direction", "right");
+                });
+
+            }).catch(error => {
+                console.warn("Multiplayer blocked. Launching Offline Mode.", error);
+                document.getElementById('network-status').innerText = "Offline Fallback";
+                document.getElementById('network-status').style.color = "#ff0044";
+
+                let snakeBody = [];
+                let currentDirection = "up";
+                let apple = [0, 0];
+                const moveSpeed = 0.00015;
+
+                map.on('click', (e) => {
+                    if (hasSpawned) return;
+                    hasSpawned = true;
+                    
+                    const clickLng = e.lngLat.lng;
+                    const clickLat = e.lngLat.lat;
+
+                    for(let i = 0; i < 5; i++) {
+                        snakeBody.push([clickLng, clickLat - (i * moveSpeed)]);
+                    }
+                    apple = [clickLng + 0.002, clickLat + 0.002];
+
+                    document.getElementById('instructions').innerText = "WASD to move.";
+
+                    map.addSource('snake', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'LineString', coordinates: snakeBody } } });
+                    map.addLayer({ id: 'snake-layer', type: 'line', source: 'snake', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#00ffcc', 'line-width': 16, 'line-blur': 1 } });
+                    
+                    map.addSource('apple-src', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'Point', coordinates: apple } } });
+                    map.addLayer({ id: 'apple-layer', type: 'circle', source: 'apple-src', paint: { 'circle-color': '#ff0044', 'circle-radius': 14, 'circle-blur': 0.2 } });
+
+                    map.jumpTo({ center: [clickLng, clickLat], zoom: 18, pitch: 45 });
+
+                    setInterval(() => {
+                        const head = [...snakeBody[0]];
+                        if (currentDirection === "up") head[1] += moveSpeed;
+                        if (currentDirection === "down") head[1] -= moveSpeed;
+                        if (currentDirection === "left") head[0] -= moveSpeed;
+                        if (currentDirection === "right") head[0] += moveSpeed;
+
+                        snakeBody.unshift(head);
+
+                        const distLat = Math.abs(head[1] - apple[1]);
+                        const distLng = Math.abs(head[0] - apple[0]);
+                        
+                        if (distLat < 0.0003 && distLng < 0.0003) {
+                            apple = [head[0] + (Math.random() - 0.5) * 0.004, head[1] + (Math.random() - 0.5) * 0.004];
+                            map.getSource('apple-src').setData({ type: 'Feature', geometry: { type: 'Point', coordinates: apple } });
+                            document.getElementById('score').innerText = snakeBody.length - 5;
+                        } else {
+                            snakeBody.pop();
+                        }
+
+                        map.getSource('snake').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: snakeBody } });
+                        map.setCenter([head[0], head[1]]);
+                        updatePointer(head[0], head[1], apple[0], apple[1]);
+                    }, 33);
+                });
+
+                document.addEventListener('keydown', (e) => {
+                    if (!hasSpawned) return;
+                    const key = e.key.toLowerCase();
+                    if ((key === 'w' || key === 'arrowup') && currentDirection !== 'down') currentDirection = 'up';
+                    if ((key === 's' || key === 'arrowdown') && currentDirection !== 'up') currentDirection = 'down';
+                    if ((key === 'a' || key === 'arrowleft') && currentDirection !== 'right') currentDirection = 'left';
+                    if ((key === 'd' || key === 'arrowright') && currentDirection !== 'left') currentDirection = 'right';
+                });
+            });
+        });
+    </script>
+</body>
+</html>

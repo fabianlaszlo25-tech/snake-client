@@ -83,7 +83,7 @@
             });
 
             // INSERT SSH TUNNEL URL HERE
-            const client = new window.Colyseus.Client('https://2dba90fc44f0c2.lhr.life');
+            const client = new window.Colyseus.Client('wss://snake-server-production-3edf.up.railway.app');
 
             client.joinOrCreate("snake_room").then(room => {
                 document.getElementById('network-status').innerText = "Multiplayer Active";

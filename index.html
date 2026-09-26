@@ -31,6 +31,7 @@
         <p id="instructions" style="color:#aaa; font-size:14px;">Click map to deploy.</p>
         <div style="font-size:14px; line-height:1.8;">
             <div>Network: <span id="network-status" class="highlight">Connecting...</span></div>
+            <div>Players: <span id="player-count" class="highlight">0</span></div>
             <div>Score: <span id="score" class="highlight">0</span></div>
         </div>
         <div id="tracker">
@@ -72,7 +73,8 @@
                         { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[-180, 80], [180, 80], [180, 90], [-180, 90], [-180, 80]]] } },
                         { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[-180, -80], [180, -80], [180, -90], [-180, -90], [-180, -80]]] } }
                     ]
-                }
+                },
+                tolerance: 0, buffer: 512
             });
             map.addLayer({
                 id: 'poles-layer',
@@ -81,13 +83,13 @@
                 paint: { 'fill-color': '#00aaff', 'fill-opacity': 0.5 }
             });
 
-            const client = new window.Colyseus.Client(' wss://involves-months-attraction-shame.trycloudflare.com');
+            const client = new window.Colyseus.Client('wss://involves-months-attraction-shame.trycloudflare.com ');
 
             client.joinOrCreate("snake_room").then(room => {
                 document.getElementById('network-status').innerText = "Multiplayer Active";
                 document.getElementById('network-status').style.color = "#00ffcc";
                 
-                map.addSource('apples-src', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+                map.addSource('apples-src', { type: 'geojson', data: { type: 'FeatureCollection', features: [] }, tolerance: 0, buffer: 512 });
                 map.addLayer({ id: 'apples-layer', type: 'circle', source: 'apples-src', paint: { 'circle-color': '#ff0044', 'circle-radius': 18, 'circle-blur': 0.2 } });
 
                 map.on('click', (e) => {
@@ -101,7 +103,8 @@
                 let latestHead = null;
 
                 room.onStateChange((state) => {
-                    // Bundle all active apples into a single geojson update
+                    document.getElementById('player-count').innerText = state.players.size;
+
                     const appleFeatures = [];
                     state.apples.forEach((apple) => {
                         appleFeatures.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [apple.lng, apple.lat] } });
@@ -111,10 +114,10 @@
 
                     state.players.forEach((player, sessionId) => {
                         if (!map.getSource(sessionId)) {
-                            map.addSource(sessionId, { type: 'geojson', data: { type: 'Feature', geometry: { type: 'LineString', coordinates: [] } } });
+                            map.addSource(sessionId, { type: 'geojson', data: { type: 'Feature', geometry: { type: 'LineString', coordinates: [] } }, tolerance: 0, buffer: 512 });
                             map.addLayer({ id: sessionId, type: 'line', source: sessionId, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#00ffcc', 'line-width': 16, 'line-blur': 1 } });
                             
-                            map.addSource(sessionId + '-head', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'Point', coordinates: [0,0] } } });
+                            map.addSource(sessionId + '-head', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'Point', coordinates: [0,0] } }, tolerance: 0, buffer: 512 });
                             map.addLayer({ id: sessionId + '-head-layer', type: 'circle', source: sessionId + '-head', paint: { 'circle-color': '#00ffcc', 'circle-radius': 16 } });
                         }
                         
@@ -162,23 +165,23 @@
                             updatePointer(latestHead.lng, latestHead.lat, closestApple.lng, closestApple.lat);
                         }
                     }
-                }, 16); 
+                }, 16);
 
                 document.addEventListener('keydown', (e) => {
                     if (!hasSpawned) return;
                     const key = e.key.toLowerCase();
-                    if (key === 'w' || key === 'arrowup') room.send("direction", "up");
-                    if (key === 's' || key === 'arrowdown') room.send("direction", "down");
-                    if (key === 'a' || key === 'arrowleft') room.send("direction", "left");
-                    if (key === 'd' || key === 'arrowright') room.send("direction", "right");
+                    if ((key === 'w' || key === 'arrowup') && currentDirection !== 'down') currentDirection = 'up';
+                    if ((key === 's' || key === 'arrowdown') && currentDirection !== 'up') currentDirection = 'down';
+                    if ((key === 'a' || key === 'arrowleft') && currentDirection !== 'right') currentDirection = 'left';
+                    if ((key === 'd' || key === 'arrowright') && currentDirection !== 'left') currentDirection = 'right';
                 });
 
             }).catch(error => {
                 console.error("MULTIPLAYER CONNECTION FATAL ERROR:", error);
     
                 document.getElementById('network-status').innerText = "Offline Fallback";
+                document.getElementById('player-count').innerText = "1";
                 console.warn("Multiplayer blocked. Launching Offline Mode.");
-                document.getElementById('network-status').innerText = "Offline Fallback";
                 document.getElementById('network-status').style.color = "#ff0044";
 
                 let snakeBody = [];
@@ -199,13 +202,13 @@
                     apple = [clickLng + 0.001, clickLat + 0.001];
                     document.getElementById('instructions').innerText = "WASD to move.";
 
-                    map.addSource('snake', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'LineString', coordinates: snakeBody } } });
+                    map.addSource('snake', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'LineString', coordinates: snakeBody } }, tolerance: 0, buffer: 512 });
                     map.addLayer({ id: 'snake-layer', type: 'line', source: 'snake', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#00ffcc', 'line-width': 16, 'line-blur': 1 } });
                     
-                    map.addSource('snake-head', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'Point', coordinates: snakeBody[0] } } });
+                    map.addSource('snake-head', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'Point', coordinates: snakeBody[0] } }, tolerance: 0, buffer: 512 });
                     map.addLayer({ id: 'snake-head-layer', type: 'circle', source: 'snake-head', paint: { 'circle-color': '#00ffcc', 'circle-radius': 16 } });
 
-                    map.addSource('apple-src', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'Point', coordinates: apple } } });
+                    map.addSource('apple-src', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'Point', coordinates: apple } }, tolerance: 0, buffer: 512 });
                     map.addLayer({ id: 'apple-layer', type: 'circle', source: 'apple-src', paint: { 'circle-color': '#ff0044', 'circle-radius': 18, 'circle-blur': 0.2 } });
 
                     const gameLoop = setInterval(() => {

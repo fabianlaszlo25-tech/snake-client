@@ -168,97 +168,60 @@
                 let pendingGrowth = 0;
                 const baseSpeed = 0.00004; 
 
+                // 1. Map click to spawn
                 map.on('click', (e) => {
                     if (hasSpawned) return;
+                    room.send("spawn", { lat: e.lngLat.lat, lng: e.lngLat.lng });
                     hasSpawned = true;
-                    const clickLng = e.lngLat.lng;
-                    const clickLat = e.lngLat.lat;
-
-                    for(let i = 0; i < 5; i++) {
-                        snakeBody.push([clickLng, clickLat - (i * baseSpeed)]);
-                    }
-                    apple = [clickLng + 0.001, clickLat + 0.001];
                     document.getElementById('instructions').innerText = "WASD to move.";
-
-                    map.addSource('snake', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'LineString', coordinates: snakeBody } } });
-                    map.addLayer({ id: 'snake-layer', type: 'line', source: 'snake', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#00ffcc', 'line-width': 16, 'line-blur': 1 } });
-                    
-                    map.addSource('snake-head', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'Point', coordinates: snakeBody[0] } } });
-                    map.addLayer({ id: 'snake-head-layer', type: 'circle', source: 'snake-head', paint: { 'circle-color': '#00ffcc', 'circle-radius': 16 } });
-
-                    map.addSource('apple-src', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'Point', coordinates: apple } } });
-                    map.addLayer({ id: 'apple-layer', type: 'circle', source: 'apple-src', paint: { 'circle-color': '#ff0044', 'circle-radius': 18, 'circle-blur': 0.2 } });
-
-                    const gameLoop = setInterval(() => {
-                        const head = [...snakeBody[0]];
-                        const localScore = snakeBody.length > 5 ? snakeBody.length - 5 : 0;
-                        
-                        targetZoom = Math.max(3, 18 - (localScore * 0.06));
-                        const scaleFactor = Math.pow(2, 18 - targetZoom);
-                        const dynamicSpeed = baseSpeed * scaleFactor;
-                        
-                        const latSpeed = dynamicSpeed * Math.cos(head[1] * Math.PI / 180);
-                        
-                        if (currentDirection === "up") head[1] += latSpeed;
-                        if (currentDirection === "down") head[1] -= latSpeed;
-                        if (currentDirection === "left") head[0] -= dynamicSpeed;
-                        if (currentDirection === "right") head[0] += dynamicSpeed;
-
-                        if (Math.abs(head[1]) > 80) {
-                            clearInterval(gameLoop);
-                            alert("Game Over! You froze at the poles. Final Score: " + localScore);
-                            location.reload();
-                            return;
-                        }
-
-                        const deathHitbox = dynamicSpeed * 0.8;
-                        for (let i = 25; i < snakeBody.length; i++) {
-                            if (Math.abs(head[0] - snakeBody[i][0]) < deathHitbox && Math.abs(head[1] - snakeBody[i][1]) < deathHitbox) {
-                                clearInterval(gameLoop);
-                                alert("Game Over! Final Score: " + localScore);
-                                location.reload();
-                                return;
-                            }
-                        }
-
-                        snakeBody.unshift(head);
-
-                        const distLat = Math.abs(head[1] - apple[1]);
-                        const distLng = Math.abs(head[0] - apple[0]);
-                        const appleHitbox = dynamicSpeed * 3;
-                        
-                        if (distLat < appleHitbox && distLng < appleHitbox) {
-                            const spawnRadius = 0.003 * scaleFactor;
-                            let newAppleLat = head[1] + (Math.random() > 0.5 ? 1 : -1) * (spawnRadius + Math.random() * spawnRadius);
-                            
-                            // Clamp offline apple to a strict 70-degree safe zone
-                            newAppleLat = Math.max(-70, Math.min(70, newAppleLat)); 
-                            
-                            apple = [
-                                head[0] + (Math.random() > 0.5 ? 1 : -1) * (spawnRadius + Math.random() * spawnRadius),
-                                newAppleLat
-                            ];
-                            map.getSource('apple-src').setData({ type: 'Feature', geometry: { type: 'Point', coordinates: apple } });
-                            document.getElementById('score').innerText = localScore;
-                            pendingGrowth += 10;
-                        }
-
-                        if (pendingGrowth > 0) {
-                            pendingGrowth--;
-                        } else {
-                            snakeBody.pop();
-                        }
-
-                        map.getSource('snake').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: snakeBody } });
-                        map.getSource('snake-head').setData({ type: 'Feature', geometry: { type: 'Point', coordinates: head } });
-                        
-                        currentZoom += (targetZoom - currentZoom) * 0.1;
-                        map.jumpTo({ center: [head[0], head[1]], zoom: currentZoom });
-                        
-                        updatePointer(head[0], head[1], apple[0], apple[1]);
-                    }, 33);
+                    map.jumpTo({ center: [e.lngLat.lng, e.lngLat.lat], zoom: currentZoom, pitch: 45 });
                 });
 
+                // 2. UNIVERSAL STATE LISTENER (Replaces the broken 0.15 onChange/onAdd callbacks)
+                room.onStateChange((state) => {
+                    // Update Apple
+                    const appleSrc = map.getSource('apple-src');
+                    if (appleSrc) appleSrc.setData({ type: 'Feature', geometry: { type: 'Point', coordinates: [state.apple.lng, state.apple.lat] } });
+
+                    // Update All Players
+                    state.players.forEach((player, sessionId) => {
+                        if (!map.getSource(sessionId)) {
+                            map.addSource(sessionId, { type: 'geojson', data: { type: 'Feature', geometry: { type: 'LineString', coordinates: [] } } });
+                            map.addLayer({ id: sessionId, type: 'line', source: sessionId, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#00ffcc', 'line-width': 16, 'line-blur': 1 } });
+                            
+                            map.addSource(sessionId + '-head', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'Point', coordinates: [0,0] } } });
+                            map.addLayer({ id: sessionId + '-head-layer', type: 'circle', source: sessionId + '-head', paint: { 'circle-color': '#00ffcc', 'circle-radius': 16 } });
+                        }
+                        
+                        const coords = [];
+                        player.body.forEach(p => coords.push([p.lng, p.lat]));
+                        
+                        if (coords.length >= 2) {
+                            map.getSource(sessionId).setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: coords } });
+                            map.getSource(sessionId + '-head').setData({ type: 'Feature', geometry: { type: 'Point', coordinates: coords[0] } });
+                        } else if (coords.length === 0) {
+                            map.getSource(sessionId).setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: [] } });
+                            map.getSource(sessionId + '-head').setData({ type: 'Feature', geometry: { type: 'Point', coordinates: [0,0] } });
+                        }
+                        
+                        // Camera and Score tracking for YOUR player
+                        if (sessionId === room.sessionId && player.body.length > 0) {
+                             const headLng = player.body[0].lng;
+                             const headLat = player.body[0].lat;
+                             
+                             const newScore = player.body.length > 5 ? player.body.length - 5 : 0;
+                             if (newScore !== currentScore) {
+                                 currentScore = newScore;
+                                 document.getElementById('score').innerText = currentScore;
+                                 targetZoom = Math.max(3, 18 - (currentScore * 0.06)); 
+                             }
+
+                             currentZoom += (targetZoom - currentZoom) * 0.1;
+                             map.jumpTo({ center: [headLng, headLat], zoom: currentZoom });
+                             updatePointer(headLng, headLat, state.apple.lng, state.apple.lat);
+                        }
+                    });
+                });
                 document.addEventListener('keydown', (e) => {
                     if (!hasSpawned) return;
                     const key = e.key.toLowerCase();

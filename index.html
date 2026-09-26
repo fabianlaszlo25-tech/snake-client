@@ -64,7 +64,8 @@
         }
 
         map.on('load', () => {
-            const client = new window.Colyseus.Client('https://snake-server-71tu.onrender.com/');
+            // INSERT CLOUDFLARE URL HERE (Keep the https:// prefix, Colyseus auto-upgrades it to wss://)
+            const client = new window.Colyseus.Client('https://nine-dingos-listen.loca.lt');
 
             client.joinOrCreate("snake_room").then(room => {
                 document.getElementById('network-status').innerText = "Multiplayer Active";
@@ -170,7 +171,6 @@
                         const head = [...snakeBody[0]];
                         const localScore = snakeBody.length > 5 ? snakeBody.length - 5 : 0;
                         
-                        // Hard cap on zoom applies to scaling factor
                         targetZoom = Math.max(3, 18 - (localScore * 0.06));
                         const scaleFactor = Math.pow(2, 18 - targetZoom);
                         const dynamicSpeed = baseSpeed * scaleFactor;
@@ -181,6 +181,14 @@
                         if (currentDirection === "down") head[1] -= latSpeed;
                         if (currentDirection === "left") head[0] -= dynamicSpeed;
                         if (currentDirection === "right") head[0] += dynamicSpeed;
+
+                        // Offline Pole Kill Zone
+                        if (Math.abs(head[1]) > 80) {
+                            clearInterval(gameLoop);
+                            alert("Game Over! You froze at the poles. Final Score: " + localScore);
+                            location.reload();
+                            return;
+                        }
 
                         const deathHitbox = dynamicSpeed * 0.8;
                         for (let i = 25; i < snakeBody.length; i++) {
@@ -200,9 +208,12 @@
                         
                         if (distLat < appleHitbox && distLng < appleHitbox) {
                             const spawnRadius = 0.003 * scaleFactor;
+                            let newAppleLat = head[1] + (Math.random() > 0.5 ? 1 : -1) * (spawnRadius + Math.random() * spawnRadius);
+                            newAppleLat = Math.max(-79, Math.min(79, newAppleLat)); // Clamp offline apple
+                            
                             apple = [
                                 head[0] + (Math.random() > 0.5 ? 1 : -1) * (spawnRadius + Math.random() * spawnRadius),
-                                head[1] + (Math.random() > 0.5 ? 1 : -1) * (spawnRadius + Math.random() * spawnRadius)
+                                newAppleLat
                             ];
                             map.getSource('apple-src').setData({ type: 'Feature', geometry: { type: 'Point', coordinates: apple } });
                             document.getElementById('score').innerText = localScore;

@@ -85,7 +85,7 @@
                 paint: { 'fill-color': '#00aaff', 'fill-opacity': 0.5 }
             });
 
-            const client = new window.Colyseus.Client('wss://checked-prospect-relevant-chan.trycloudflare.com');
+            const client = new window.Colyseus.Client('wss://dual-public-warriors-identify.trycloudflare.com');
 
             client.joinOrCreate("snake_room").then(room => {
                 document.getElementById('network-status').innerText = "Multiplayer Active";
@@ -185,10 +185,10 @@
                 document.addEventListener('keydown', (e) => {
                     if (!hasSpawned) return;
                     const key = e.key.toLowerCase();
-                    if ((key === 'w' || key === 'arrowup') && currentDirection !== 'down') currentDirection = 'up';
-                    if ((key === 's' || key === 'arrowdown') && currentDirection !== 'up') currentDirection = 'down';
-                    if ((key === 'a' || key === 'arrowleft') && currentDirection !== 'right') currentDirection = 'left';
-                    if ((key === 'd' || key === 'arrowright') && currentDirection !== 'left') currentDirection = 'right';
+                    if (key === 'w' || key === 'arrowup') room.send("direction", "up");
+                    if (key === 's' || key === 'arrowdown') room.send("direction", "down");
+                    if (key === 'a' || key === 'arrowleft') room.send("direction", "left");
+                    if (key === 'd' || key === 'arrowright') room.send("direction", "right");
                 });
 
             }).catch(error => {

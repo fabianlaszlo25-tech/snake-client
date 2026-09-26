@@ -53,6 +53,8 @@
 
         let hasSpawned = false;
         let currentScore = 0;
+        let targetZoom = 18;
+        let currentZoom = 18;
         
         function updatePointer(headLng, headLat, appleLng, appleLat) {
             const dx = appleLng - headLng;
@@ -62,7 +64,7 @@
         }
 
         map.on('load', () => {
-            // YOU MUST UPDATE THIS LINE WITH YOUR RENDER URL
+            // YOU MUST UPDATE THIS LINE WITH YOUR EXACT RENDER URL
             const client = new window.Colyseus.Client('wss://snake-server-71tu.onrender.com/');
 
             client.joinOrCreate("snake_room").then(room => {
@@ -81,7 +83,7 @@
                     room.send("spawn", { lat: e.lngLat.lat, lng: e.lngLat.lng });
                     hasSpawned = true;
                     document.getElementById('instructions').innerText = "WASD to move.";
-                    map.jumpTo({ center: [e.lngLat.lng, e.lngLat.lat], zoom: 18, pitch: 45 });
+                    map.jumpTo({ center: [e.lngLat.lng, e.lngLat.lat], zoom: currentZoom, pitch: 45 });
                 });
 
                 room.state.players.onAdd((player, sessionId) => {
@@ -113,20 +115,22 @@
                         if (sessionId === room.sessionId && player.body.length > 0) {
                              const headLng = player.body[0].lng;
                              const headLat = player.body[0].lat;
-                             map.setCenter([headLng, headLat]);
-                             updatePointer(headLng, headLat, room.state.apple.lng, room.state.apple.lat);
-
+                             
                              const newScore = player.body.length - 5;
                              if (newScore !== currentScore) {
                                  currentScore = newScore;
                                  document.getElementById('score').innerText = currentScore;
                                  
                                  const appleSize = 24 + (currentScore * 1.5);
-                                 const zoomLevel = 18 - (currentScore * 0.05);
-
                                  if (map.getLayer('apple-layer')) map.setPaintProperty('apple-layer', 'circle-radius', appleSize);
-                                 map.zoomTo(zoomLevel, { duration: 300 });
+                                 
+                                 targetZoom = 18 - (currentScore * 0.05);
                              }
+
+                             // Smoothly lerp the zoom level
+                             currentZoom += (targetZoom - currentZoom) * 0.1;
+                             map.jumpTo({ center: [headLng, headLat], zoom: currentZoom });
+                             updatePointer(headLng, headLat, room.state.apple.lng, room.state.apple.lat);
                         }
                     });
                 });
@@ -173,8 +177,6 @@
                     map.addSource('apple-src', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'Point', coordinates: apple } } });
                     map.addLayer({ id: 'apple-layer', type: 'circle', source: 'apple-src', paint: { 'circle-color': '#ff0044', 'circle-radius': 24, 'circle-blur': 0.2 } });
 
-                    map.jumpTo({ center: [clickLng, clickLat], zoom: 18, pitch: 45 });
-
                     const gameLoop = setInterval(() => {
                         const head = [...snakeBody[0]];
                         if (currentDirection === "up") head[1] += moveSpeed;
@@ -195,22 +197,21 @@
 
                         const distLat = Math.abs(head[1] - apple[1]);
                         const distLng = Math.abs(head[0] - apple[0]);
-                        const currentScore = snakeBody.length - 5;
-                        const appleHitbox = 0.0003 + (currentScore * 0.00001);
+                        const localScore = snakeBody.length - 5;
+                        const appleHitbox = 0.0003 + (localScore * 0.00001);
                         
                         if (distLat < appleHitbox && distLng < appleHitbox) {
                             apple = [head[0] + (Math.random() - 0.5) * 0.004, head[1] + (Math.random() - 0.5) * 0.004];
                             map.getSource('apple-src').setData({ type: 'Feature', geometry: { type: 'Point', coordinates: apple } });
-                            document.getElementById('score').innerText = currentScore;
+                            document.getElementById('score').innerText = localScore;
                             
-                            const thickness = 16 + (currentScore * 1.5);
-                            const appleSize = 24 + (currentScore * 1.5);
-                            const zoomLevel = 18 - (currentScore * 0.05);
+                            const thickness = 16 + (localScore * 1.5);
+                            const appleSize = 24 + (localScore * 1.5);
+                            targetZoom = 18 - (localScore * 0.05);
 
                             map.setPaintProperty('snake-layer', 'line-width', thickness);
                             map.setPaintProperty('snake-head-layer', 'circle-radius', thickness);
                             map.setPaintProperty('apple-layer', 'circle-radius', appleSize);
-                            map.zoomTo(zoomLevel, { duration: 300 });
                         } else {
                             snakeBody.pop();
                         }
@@ -218,7 +219,10 @@
                         map.getSource('snake').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: snakeBody } });
                         map.getSource('snake-head').setData({ type: 'Feature', geometry: { type: 'Point', coordinates: head } });
                         
-                        map.setCenter([head[0], head[1]]);
+                        // Smoothly lerp the zoom level in offline mode
+                        currentZoom += (targetZoom - currentZoom) * 0.1;
+                        map.jumpTo({ center: [head[0], head[1]], zoom: currentZoom });
+                        
                         updatePointer(head[0], head[1], apple[0], apple[1]);
                     }, 33);
                 });

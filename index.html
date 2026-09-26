@@ -43,7 +43,6 @@
     <script src="https://unpkg.com/@colyseus/sdk@latest/dist/colyseus.js"></script>
 
     <script>
-        // INSERT MAPBOX TOKEN
         mapboxgl.accessToken = 'pk.eyJ1IjoiZmFiaWFubGFzemxvIiwiYSI6ImNtdWVucHZpZzA1OWMyd3J6cTcxdXp1NWYifQ.kMJLBGApSaulkBMZcp2azw'; 
 
         const map = new mapboxgl.Map({
@@ -82,34 +81,33 @@
                 paint: { 'fill-color': '#00aaff', 'fill-opacity': 0.5 }
             });
 
-            // Make sure this matches your active Cloudflare tunnel URL if you restart the terminal
-            const client = new window.Colyseus.Client('wss://involves-months-attraction-shame.trycloudflare.com');
+            const client = new window.Colyseus.Client(' wss://involves-months-attraction-shame.trycloudflare.com');
 
             client.joinOrCreate("snake_room").then(room => {
                 document.getElementById('network-status').innerText = "Multiplayer Active";
                 document.getElementById('network-status').style.color = "#00ffcc";
                 
-                map.addSource('apple-src', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'Point', coordinates: [0,0] } } });
-                map.addLayer({ id: 'apple-layer', type: 'circle', source: 'apple-src', paint: { 'circle-color': '#ff0044', 'circle-radius': 18, 'circle-blur': 0.2 } });
+                map.addSource('apples-src', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+                map.addLayer({ id: 'apples-layer', type: 'circle', source: 'apples-src', paint: { 'circle-color': '#ff0044', 'circle-radius': 18, 'circle-blur': 0.2 } });
 
                 map.on('click', (e) => {
                     if (hasSpawned) return;
                     room.send("spawn", { lat: e.lngLat.lat, lng: e.lngLat.lng });
                     hasSpawned = true;
                     document.getElementById('instructions').innerText = "WASD to move.";
-                    
-                    // Removed pitch: 45 to keep the map perfectly flat
                     map.jumpTo({ center: [e.lngLat.lng, e.lngLat.lat], zoom: currentZoom });
                 });
 
                 let latestHead = null;
 
-                // Network listener only updates data and variables now
                 room.onStateChange((state) => {
-                    if (state.apple) {
-                        const appleSrc = map.getSource('apple-src');
-                        if (appleSrc) appleSrc.setData({ type: 'Feature', geometry: { type: 'Point', coordinates: [state.apple.lng, state.apple.lat] } });
-                    }
+                    // Bundle all active apples into a single geojson update
+                    const appleFeatures = [];
+                    state.apples.forEach((apple) => {
+                        appleFeatures.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [apple.lng, apple.lat] } });
+                    });
+                    const applesSrc = map.getSource('apples-src');
+                    if (applesSrc) applesSrc.setData({ type: 'FeatureCollection', features: appleFeatures });
 
                     state.players.forEach((player, sessionId) => {
                         if (!map.getSource(sessionId)) {
@@ -144,17 +142,27 @@
                     });
                 });
 
-                // Local browser loop to decouple camera smoothing from network lag
                 setInterval(() => {
                     if (latestHead) {
                         currentZoom += (targetZoom - currentZoom) * 0.1;
                         map.jumpTo({ center: [latestHead.lng, latestHead.lat], zoom: currentZoom });
                         
-                        if (room.state.apple) {
-                            updatePointer(latestHead.lng, latestHead.lat, room.state.apple.lng, room.state.apple.lat);
+                        let closestApple = null;
+                        let minAppleDist = Infinity;
+                        
+                        room.state.apples.forEach((apple) => {
+                            const dist = Math.pow(apple.lng - latestHead.lng, 2) + Math.pow(apple.lat - latestHead.lat, 2);
+                            if (dist < minAppleDist) {
+                                minAppleDist = dist;
+                                closestApple = apple;
+                            }
+                        });
+                        
+                        if (closestApple) {
+                            updatePointer(latestHead.lng, latestHead.lat, closestApple.lng, closestApple.lat);
                         }
                     }
-                }, 33);
+                }, 16); 
 
                 document.addEventListener('keydown', (e) => {
                     if (!hasSpawned) return;

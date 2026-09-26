@@ -64,8 +64,27 @@
         }
 
         map.on('load', () => {
-            // INSERT CLOUDFLARE URL HERE (Keep the https:// prefix, Colyseus auto-upgrades it to wss://)
-            const client = new window.Colyseus.Client('https://nine-dingos-listen.loca.lt');
+            
+            // Visual Pole Boundaries
+            map.addSource('poles', {
+                type: 'geojson',
+                data: {
+                    type: 'FeatureCollection',
+                    features: [
+                        { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[-180, 80], [180, 80], [180, 90], [-180, 90], [-180, 80]]] } },
+                        { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[-180, -80], [180, -80], [180, -90], [-180, -90], [-180, -80]]] } }
+                    ]
+                }
+            });
+            map.addLayer({
+                id: 'poles-layer',
+                type: 'fill',
+                source: 'poles',
+                paint: { 'fill-color': '#00aaff', 'fill-opacity': 0.2 }
+            });
+
+            // INSERT SSH TUNNEL URL HERE
+            const client = new window.Colyseus.Client('https://81b4d3c610bd6a.lhr.life');
 
             client.joinOrCreate("snake_room").then(room => {
                 document.getElementById('network-status').innerText = "Multiplayer Active";
@@ -182,7 +201,6 @@
                         if (currentDirection === "left") head[0] -= dynamicSpeed;
                         if (currentDirection === "right") head[0] += dynamicSpeed;
 
-                        // Offline Pole Kill Zone
                         if (Math.abs(head[1]) > 80) {
                             clearInterval(gameLoop);
                             alert("Game Over! You froze at the poles. Final Score: " + localScore);
@@ -209,7 +227,9 @@
                         if (distLat < appleHitbox && distLng < appleHitbox) {
                             const spawnRadius = 0.003 * scaleFactor;
                             let newAppleLat = head[1] + (Math.random() > 0.5 ? 1 : -1) * (spawnRadius + Math.random() * spawnRadius);
-                            newAppleLat = Math.max(-79, Math.min(79, newAppleLat)); // Clamp offline apple
+                            
+                            // Strictly clamp the apple safely away from the poles
+                            newAppleLat = Math.max(-75, Math.min(75, newAppleLat)); 
                             
                             apple = [
                                 head[0] + (Math.random() > 0.5 ? 1 : -1) * (spawnRadius + Math.random() * spawnRadius),

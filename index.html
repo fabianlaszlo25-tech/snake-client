@@ -83,7 +83,7 @@
             });
 
             // INSERT SSH TUNNEL URL HERE
-            const client = new window.Colyseus.Client('https://snake-server-production-3edf.up.railway.app');
+            const client = new window.Colyseus.Client('wss://travesty-endocrine-knee.ngrok-free.dev');
 
             client.joinOrCreate("snake_room").then(room => {
                 document.getElementById('network-status').innerText = "Multiplayer Active";

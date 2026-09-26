@@ -53,23 +53,21 @@
 
         let hasSpawned = false;
         
-        // UI Pointer Update Function
         function updatePointer(headLng, headLat, appleLng, appleLat) {
             const dx = appleLng - headLng;
             const dy = appleLat - headLat;
-            // Calculate bearing (0 is up/North)
             const angle = Math.atan2(dx, dy) * (180 / Math.PI);
             document.getElementById('apple-arrow').style.transform = `rotate(${angle}deg)`;
         }
 
         map.on('load', () => {
-            const client = new window.Colyseus.Client('https://snake-server-71tu.onrender.com/');
+            // Keep this pointed to your Render URL if you have it, or leave localhost to force the fallback for now
+            const client = new window.Colyseus.Client('ws://localhost:2567');
 
             client.joinOrCreate("snake_room").then(room => {
                 document.getElementById('network-status').innerText = "Multiplayer Active";
                 
                 map.addSource('apple-src', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'Point', coordinates: [0,0] } } });
-                // Increased Apple Size
                 map.addLayer({ id: 'apple-layer', type: 'circle', source: 'apple-src', paint: { 'circle-color': '#ff0044', 'circle-radius': 14, 'circle-blur': 0.2 } });
 
                 room.state.apple.onChange(() => {
@@ -88,13 +86,21 @@
                 room.state.players.onAdd((player, sessionId) => {
                     player.body.onAdd(() => {
                         if (!map.getSource(sessionId)) {
+                            // Body layer
                             map.addSource(sessionId, { type: 'geojson', data: { type: 'Feature', geometry: { type: 'LineString', coordinates: [] } } });
-                            // Increased Snake Thickness
                             map.addLayer({ id: sessionId, type: 'line', source: sessionId, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#00ffcc', 'line-width': 16, 'line-blur': 1 } });
+                            
+                            // Head layer (twice as thick as the 16px body)
+                            map.addSource(sessionId + '-head', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'Point', coordinates: [0,0] } } });
+                            map.addLayer({ id: sessionId + '-head-layer', type: 'circle', source: sessionId + '-head', paint: { 'circle-color': '#ffffff', 'circle-radius': 16 } });
                         }
+                        
                         const coords = [];
                         player.body.forEach(p => coords.push([p.lng, p.lat]));
-                        if (coords.length >= 2) map.getSource(sessionId).setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: coords } });
+                        if (coords.length >= 2) {
+                            map.getSource(sessionId).setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: coords } });
+                            map.getSource(sessionId + '-head').setData({ type: 'Feature', geometry: { type: 'Point', coordinates: coords[0] } });
+                        }
                         
                         if (sessionId === room.sessionId && player.body.length > 0) {
                              const headLng = player.body[0].lng;
@@ -139,20 +145,36 @@
 
                     document.getElementById('instructions').innerText = "WASD to move.";
 
+                    // Body
                     map.addSource('snake', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'LineString', coordinates: snakeBody } } });
                     map.addLayer({ id: 'snake-layer', type: 'line', source: 'snake', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#00ffcc', 'line-width': 16, 'line-blur': 1 } });
                     
+                    // Head
+                    map.addSource('snake-head', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'Point', coordinates: snakeBody[0] } } });
+                    map.addLayer({ id: 'snake-head-layer', type: 'circle', source: 'snake-head', paint: { 'circle-color': '#ffffff', 'circle-radius': 16 } });
+
+                    // Apple
                     map.addSource('apple-src', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'Point', coordinates: apple } } });
                     map.addLayer({ id: 'apple-layer', type: 'circle', source: 'apple-src', paint: { 'circle-color': '#ff0044', 'circle-radius': 14, 'circle-blur': 0.2 } });
 
                     map.jumpTo({ center: [clickLng, clickLat], zoom: 18, pitch: 45 });
 
-                    setInterval(() => {
+                    const gameLoop = setInterval(() => {
                         const head = [...snakeBody[0]];
                         if (currentDirection === "up") head[1] += moveSpeed;
                         if (currentDirection === "down") head[1] -= moveSpeed;
                         if (currentDirection === "left") head[0] -= moveSpeed;
                         if (currentDirection === "right") head[0] += moveSpeed;
+
+                        // Check self-collision
+                        for (let i = 1; i < snakeBody.length; i++) {
+                            if (Math.abs(head[0] - snakeBody[i][0]) < 0.00005 && Math.abs(head[1] - snakeBody[i][1]) < 0.00005) {
+                                clearInterval(gameLoop);
+                                alert("Game Over! Final Score: " + (snakeBody.length - 5));
+                                location.reload();
+                                return;
+                            }
+                        }
 
                         snakeBody.unshift(head);
 
@@ -168,6 +190,8 @@
                         }
 
                         map.getSource('snake').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: snakeBody } });
+                        map.getSource('snake-head').setData({ type: 'Feature', geometry: { type: 'Point', coordinates: head } });
+                        
                         map.setCenter([head[0], head[1]]);
                         updatePointer(head[0], head[1], apple[0], apple[1]);
                     }, 33);

@@ -101,18 +101,15 @@
                             map.getSource(sessionId).setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: coords } });
                             map.getSource(sessionId + '-head').setData({ type: 'Feature', geometry: { type: 'Point', coordinates: coords[0] } });
                             
-                            // Dynamic scaling logic applies to all connected snakes
                             const localScore = coords.length - 5;
                             const thickness = 16 + (localScore * 1.5);
                             map.setPaintProperty(sessionId, 'line-width', thickness);
                             map.setPaintProperty(sessionId + '-head-layer', 'circle-radius', thickness);
                         } else if (coords.length === 0) {
-                            // Player died, hide geometry
                             map.getSource(sessionId).setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: [] } });
                             map.getSource(sessionId + '-head').setData({ type: 'Feature', geometry: { type: 'Point', coordinates: [0,0] } });
                         }
                         
-                        // Local Player Camera Logic
                         if (sessionId === room.sessionId && player.body.length > 0) {
                              const headLng = player.body[0].lng;
                              const headLat = player.body[0].lat;
@@ -124,7 +121,6 @@
                                  currentScore = newScore;
                                  document.getElementById('score').innerText = currentScore;
                                  
-                                 // Scale apple and camera out based on new score
                                  const appleSize = 24 + (currentScore * 1.5);
                                  const zoomLevel = 18 - (currentScore * 0.05);
 
@@ -145,9 +141,96 @@
                 });
 
             }).catch(error => {
-                console.warn("Multiplayer connection failed.", error);
-                document.getElementById('network-status').innerText = "Connection Failed";
+                console.warn("Multiplayer blocked. Launching Offline Mode.", error);
+                document.getElementById('network-status').innerText = "Offline Fallback";
                 document.getElementById('network-status').style.color = "#ff0044";
+
+                let snakeBody = [];
+                let currentDirection = "up";
+                let apple = [0, 0];
+                const moveSpeed = 0.00015;
+
+                map.on('click', (e) => {
+                    if (hasSpawned) return;
+                    hasSpawned = true;
+                    
+                    const clickLng = e.lngLat.lng;
+                    const clickLat = e.lngLat.lat;
+
+                    for(let i = 0; i < 5; i++) {
+                        snakeBody.push([clickLng, clickLat - (i * moveSpeed)]);
+                    }
+                    apple = [clickLng + 0.002, clickLat + 0.002];
+
+                    document.getElementById('instructions').innerText = "WASD to move.";
+
+                    map.addSource('snake', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'LineString', coordinates: snakeBody } } });
+                    map.addLayer({ id: 'snake-layer', type: 'line', source: 'snake', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#00ffcc', 'line-width': 16, 'line-blur': 1 } });
+                    
+                    map.addSource('snake-head', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'Point', coordinates: snakeBody[0] } } });
+                    map.addLayer({ id: 'snake-head-layer', type: 'circle', source: 'snake-head', paint: { 'circle-color': '#00ffcc', 'circle-radius': 16 } });
+
+                    map.addSource('apple-src', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'Point', coordinates: apple } } });
+                    map.addLayer({ id: 'apple-layer', type: 'circle', source: 'apple-src', paint: { 'circle-color': '#ff0044', 'circle-radius': 24, 'circle-blur': 0.2 } });
+
+                    map.jumpTo({ center: [clickLng, clickLat], zoom: 18, pitch: 45 });
+
+                    const gameLoop = setInterval(() => {
+                        const head = [...snakeBody[0]];
+                        if (currentDirection === "up") head[1] += moveSpeed;
+                        if (currentDirection === "down") head[1] -= moveSpeed;
+                        if (currentDirection === "left") head[0] -= moveSpeed;
+                        if (currentDirection === "right") head[0] += moveSpeed;
+
+                        for (let i = 1; i < snakeBody.length; i++) {
+                            if (Math.abs(head[0] - snakeBody[i][0]) < 0.00005 && Math.abs(head[1] - snakeBody[i][1]) < 0.00005) {
+                                clearInterval(gameLoop);
+                                alert("Game Over! Final Score: " + (snakeBody.length - 5));
+                                location.reload();
+                                return;
+                            }
+                        }
+
+                        snakeBody.unshift(head);
+
+                        const distLat = Math.abs(head[1] - apple[1]);
+                        const distLng = Math.abs(head[0] - apple[0]);
+                        const currentScore = snakeBody.length - 5;
+                        const appleHitbox = 0.0003 + (currentScore * 0.00001);
+                        
+                        if (distLat < appleHitbox && distLng < appleHitbox) {
+                            apple = [head[0] + (Math.random() - 0.5) * 0.004, head[1] + (Math.random() - 0.5) * 0.004];
+                            map.getSource('apple-src').setData({ type: 'Feature', geometry: { type: 'Point', coordinates: apple } });
+                            document.getElementById('score').innerText = currentScore;
+                            
+                            const thickness = 16 + (currentScore * 1.5);
+                            const appleSize = 24 + (currentScore * 1.5);
+                            const zoomLevel = 18 - (currentScore * 0.05);
+
+                            map.setPaintProperty('snake-layer', 'line-width', thickness);
+                            map.setPaintProperty('snake-head-layer', 'circle-radius', thickness);
+                            map.setPaintProperty('apple-layer', 'circle-radius', appleSize);
+                            map.zoomTo(zoomLevel, { duration: 300 });
+                        } else {
+                            snakeBody.pop();
+                        }
+
+                        map.getSource('snake').setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: snakeBody } });
+                        map.getSource('snake-head').setData({ type: 'Feature', geometry: { type: 'Point', coordinates: head } });
+                        
+                        map.setCenter([head[0], head[1]]);
+                        updatePointer(head[0], head[1], apple[0], apple[1]);
+                    }, 33);
+                });
+
+                document.addEventListener('keydown', (e) => {
+                    if (!hasSpawned) return;
+                    const key = e.key.toLowerCase();
+                    if ((key === 'w' || key === 'arrowup') && currentDirection !== 'down') currentDirection = 'up';
+                    if ((key === 's' || key === 'arrowdown') && currentDirection !== 'up') currentDirection = 'down';
+                    if ((key === 'a' || key === 'arrowleft') && currentDirection !== 'right') currentDirection = 'left';
+                    if ((key === 'd' || key === 'arrowright') && currentDirection !== 'left') currentDirection = 'right';
+                });
             });
         });
     </script>

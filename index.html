@@ -92,6 +92,15 @@
                 map.addSource('apples-src', { type: 'geojson', data: { type: 'FeatureCollection', features: [] }, tolerance: 0, buffer: 512 });
                 map.addLayer({ id: 'apples-layer', type: 'circle', source: 'apples-src', paint: { 'circle-color': '#ff0044', 'circle-radius': 18, 'circle-blur': 0.2 } });
 
+                room.onMessage("died", (finalScore) => {
+                    hasSpawned = false;
+                    currentScore = 0;
+                    document.getElementById('score').innerText = "0";
+                    targetZoom = 18;
+                    document.getElementById('instructions').innerText = `Click map to deploy.`;
+                    alert(`Game Over! Final Score: ${finalScore}`);
+                });
+
                 map.on('click', (e) => {
                     if (hasSpawned) return;
                     room.send("spawn", { lat: e.lngLat.lat, lng: e.lngLat.lng });
@@ -131,7 +140,7 @@
                             map.getSource(sessionId + '-head').setData({ type: 'Feature', geometry: { type: 'Point', coordinates: coords[0] } });
                         } else if (coords.length === 0) {
                             map.getSource(sessionId).setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: [] } });
-                            map.getSource(sessionId + '-head').setData({ type: 'Feature', geometry: { type: 'Point', coordinates: [0,0] } });
+                            map.getSource(sessionId + '-head').setData({ type: 'FeatureCollection', features: [] });
                         }
                         
                         if (sessionId === room.sessionId && player.body.length > 0) {
@@ -174,10 +183,10 @@
                 document.addEventListener('keydown', (e) => {
                     if (!hasSpawned) return;
                     const key = e.key.toLowerCase();
-                    if ((key === 'w' || key === 'arrowup') && currentDirection !== 'down') currentDirection = 'up';
-                    if ((key === 's' || key === 'arrowdown') && currentDirection !== 'up') currentDirection = 'down';
-                    if ((key === 'a' || key === 'arrowleft') && currentDirection !== 'right') currentDirection = 'left';
-                    if ((key === 'd' || key === 'arrowright') && currentDirection !== 'left') currentDirection = 'right';
+                    if (key === 'w' || key === 'arrowup') room.send("direction", "up");
+                    if (key === 's' || key === 'arrowdown') room.send("direction", "down");
+                    if (key === 'a' || key === 'arrowleft') room.send("direction", "left");
+                    if (key === 'd' || key === 'arrowright') room.send("direction", "right");
                 });
 
             }).catch(error => {
@@ -238,7 +247,7 @@
                         }
 
                         const deathHitbox = dynamicSpeed * 0.8;
-                        for (let i = 25; i < snakeBody.length; i++) {
+                        for (let i = 15; i < snakeBody.length; i++) {
                             if (Math.abs(head[0] - snakeBody[i][0]) < deathHitbox && Math.abs(head[1] - snakeBody[i][1]) < deathHitbox) {
                                 clearInterval(gameLoop);
                                 alert("Game Over! Final Score: " + localScore);

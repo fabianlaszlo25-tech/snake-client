@@ -83,7 +83,7 @@
             });
 
             // Make sure this matches your active Cloudflare tunnel URL if you restart the terminal
-            const client = new window.Colyseus.Client('wss://involves-months-attraction-shame.trycloudflare.com ');
+            const client = new window.Colyseus.Client('wss://involves-months-attraction-shame.trycloudflare.com');
 
             client.joinOrCreate("snake_room").then(room => {
                 document.getElementById('network-status').innerText = "Multiplayer Active";
@@ -97,10 +97,14 @@
                     room.send("spawn", { lat: e.lngLat.lat, lng: e.lngLat.lng });
                     hasSpawned = true;
                     document.getElementById('instructions').innerText = "WASD to move.";
-                    map.jumpTo({ center: [e.lngLat.lng, e.lngLat.lat], zoom: currentZoom, pitch: 45 });
+                    
+                    // Removed pitch: 45 to keep the map perfectly flat
+                    map.jumpTo({ center: [e.lngLat.lng, e.lngLat.lat], zoom: currentZoom });
                 });
 
-                // UNIVERSAL STATE LISTENER (Handles all players and the apple automatically)
+                let latestHead = null;
+
+                // Network listener only updates data and variables now
                 room.onStateChange((state) => {
                     if (state.apple) {
                         const appleSrc = map.getSource('apple-src');
@@ -128,8 +132,7 @@
                         }
                         
                         if (sessionId === room.sessionId && player.body.length > 0) {
-                             const headLng = player.body[0].lng;
-                             const headLat = player.body[0].lat;
+                             latestHead = { lng: player.body[0].lng, lat: player.body[0].lat };
                              
                              const newScore = player.body.length > 5 ? player.body.length - 5 : 0;
                              if (newScore !== currentScore) {
@@ -137,13 +140,21 @@
                                  document.getElementById('score').innerText = currentScore;
                                  targetZoom = Math.max(3, 18 - (currentScore * 0.06)); 
                              }
-
-                             currentZoom += (targetZoom - currentZoom) * 0.1;
-                             map.jumpTo({ center: [headLng, headLat], zoom: currentZoom });
-                             updatePointer(headLng, headLat, state.apple.lng, state.apple.lat);
                         }
                     });
                 });
+
+                // Local browser loop to decouple camera smoothing from network lag
+                setInterval(() => {
+                    if (latestHead) {
+                        currentZoom += (targetZoom - currentZoom) * 0.1;
+                        map.jumpTo({ center: [latestHead.lng, latestHead.lat], zoom: currentZoom });
+                        
+                        if (room.state.apple) {
+                            updatePointer(latestHead.lng, latestHead.lat, room.state.apple.lng, room.state.apple.lat);
+                        }
+                    }
+                }, 33);
 
                 document.addEventListener('keydown', (e) => {
                     if (!hasSpawned) return;

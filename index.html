@@ -154,6 +154,9 @@
                 });
 
             }).catch(error => {
+                console.error("MULTIPLAYER CONNECTION FATAL ERROR:", error);
+    
+                document.getElementById('network-status').innerText = "Offline Fallback";
                 console.warn("Multiplayer blocked. Launching Offline Mode.");
                 document.getElementById('network-status').innerText = "Offline Fallback";
                 document.getElementById('network-status').style.color = "#ff0044";

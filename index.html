@@ -83,7 +83,7 @@
                 paint: { 'fill-color': '#00aaff', 'fill-opacity': 0.5 }
             });
 
-            const client = new window.Colyseus.Client('wss://involves-months-attraction-shame.trycloudflare.com ');
+            const client = new window.Colyseus.Client('wss://involves-months-attraction-shame.trycloudflare.com');
 
             client.joinOrCreate("snake_room").then(room => {
                 document.getElementById('network-status').innerText = "Multiplayer Active";
@@ -107,7 +107,9 @@
 
                     const appleFeatures = [];
                     state.apples.forEach((apple) => {
-                        appleFeatures.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [apple.lng, apple.lat] } });
+                        if (apple.lat !== 0 && apple.lng !== 0) {
+                            appleFeatures.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [apple.lng, apple.lat] } });
+                        }
                     });
                     const applesSrc = map.getSource('apples-src');
                     if (applesSrc) applesSrc.setData({ type: 'FeatureCollection', features: appleFeatures });
@@ -154,10 +156,12 @@
                         let minAppleDist = Infinity;
                         
                         room.state.apples.forEach((apple) => {
-                            const dist = Math.pow(apple.lng - latestHead.lng, 2) + Math.pow(apple.lat - latestHead.lat, 2);
-                            if (dist < minAppleDist) {
-                                minAppleDist = dist;
-                                closestApple = apple;
+                            if (apple.lat !== 0 && apple.lng !== 0) {
+                                const dist = Math.pow(apple.lng - latestHead.lng, 2) + Math.pow(apple.lat - latestHead.lat, 2);
+                                if (dist < minAppleDist) {
+                                    minAppleDist = dist;
+                                    closestApple = apple;
+                                }
                             }
                         });
                         

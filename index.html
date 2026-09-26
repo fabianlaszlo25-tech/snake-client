@@ -65,7 +65,6 @@
 
         map.on('load', () => {
             
-            // Visual Pole Boundaries
             map.addSource('poles', {
                 type: 'geojson',
                 data: {
@@ -80,11 +79,11 @@
                 id: 'poles-layer',
                 type: 'fill',
                 source: 'poles',
-                paint: { 'fill-color': '#00aaff', 'fill-opacity': 0.2 }
+                paint: { 'fill-color': '#00aaff', 'fill-opacity': 0.5 }
             });
 
             // INSERT SSH TUNNEL URL HERE
-            const client = new window.Colyseus.Client('https://81b4d3c610bd6a.lhr.life');
+            const client = new window.Colyseus.Client('https://2dba90fc44f0c2.lhr.life');
 
             client.joinOrCreate("snake_room").then(room => {
                 document.getElementById('network-status').innerText = "Multiplayer Active";
@@ -228,8 +227,8 @@
                             const spawnRadius = 0.003 * scaleFactor;
                             let newAppleLat = head[1] + (Math.random() > 0.5 ? 1 : -1) * (spawnRadius + Math.random() * spawnRadius);
                             
-                            // Strictly clamp the apple safely away from the poles
-                            newAppleLat = Math.max(-75, Math.min(75, newAppleLat)); 
+                            // Clamp offline apple to a strict 70-degree safe zone
+                            newAppleLat = Math.max(-70, Math.min(70, newAppleLat)); 
                             
                             apple = [
                                 head[0] + (Math.random() > 0.5 ? 1 : -1) * (spawnRadius + Math.random() * spawnRadius),

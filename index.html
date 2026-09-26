@@ -85,6 +85,10 @@
             // INSERT SSH TUNNEL URL HERE
             const client = new window.Colyseus.Client('wss://travesty-endocrine-knee.ngrok-free.dev');
 
+            client.http.headers = {
+            'ngrok-skip-browser-warning': 'true'
+            };
+
             client.joinOrCreate("snake_room").then(room => {
                 document.getElementById('network-status').innerText = "Multiplayer Active";
                 document.getElementById('network-status').style.color = "#00ffcc";
